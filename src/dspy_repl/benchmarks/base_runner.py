@@ -426,25 +426,11 @@ def run_benchmark(
 
     results: list[TaskResult] = []
     incremental_path = run_dir / "incremental_results.jsonl"
-    consecutive_failures: dict[Language, int] = {language: 0 for language in languages}
-    active_languages: list[Language] = list(languages)
-    failure_threshold = 3
 
     max_workers = config.parallel.max_workers if config.parallel.max_workers is not None else len(languages)
     with ProcessPoolExecutor(max_workers=max_workers) if config.parallel.enabled else nullcontext() as executor:
         process_executor = cast(ProcessPoolExecutor | None, executor)
         for task_index, task in enumerate(tasks, start=1):
-            task_languages = [
-                language for language in active_languages if consecutive_failures.get(language, 0) < failure_threshold
-            ]
-            if not task_languages:
-                log_event(
-                    logger,
-                    "benchmark_early_stop_all_languages_skipped",
-                    reason=f"all languages reached {failure_threshold} consecutive failures",
-                )
-                break
-
             task_id = str(task.get("id", f"task_{task_index}"))
             log_event(
                 logger,
@@ -453,11 +439,11 @@ def run_benchmark(
                 total_tasks=len(tasks),
                 sample_id=task_id,
                 task_name=task.get("name"),
-                languages=task_languages,
+                languages=languages,
             )
             task_results = _run_task_across_languages(
                 task=task,
-                languages=task_languages,
+                languages=languages,
                 config=config,
                 logger=logger,
                 executor=process_executor,
@@ -479,18 +465,6 @@ def run_benchmark(
                 if config.artifacts.incremental_save:
                     with incremental_path.open("a", encoding="utf-8") as fh:
                         fh.write(json.dumps(result.to_record(), ensure_ascii=False) + "\n")
-                if result.success:
-                    consecutive_failures[result.engine] = 0
-                else:
-                    consecutive_failures[result.engine] = consecutive_failures.get(result.engine, 0) + 1
-                    if consecutive_failures[result.engine] == failure_threshold:
-                        log_event(
-                            logger,
-                            "language_circuit_breaker_open",
-                            language=result.engine,
-                            threshold=failure_threshold,
-                            sample_id=result.sample_id,
-                        )
 
     run_config = {
         "run_id": run_id,

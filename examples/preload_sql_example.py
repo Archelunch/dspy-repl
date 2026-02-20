@@ -158,8 +158,6 @@ def example_sqlrlm_usage() -> None:
     """
     print("=== SQLRLM API (constructor only, no LLM call) ===\n")
 
-    from dspy_repl.languages.sql_rlm import SQLRLM
-
     print(
         "SQLRLM(\n"
         '    "query -> answer",\n'

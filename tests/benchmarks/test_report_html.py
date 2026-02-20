@@ -21,6 +21,10 @@ def test_render_html_report_contains_sections(tmp_path) -> None:  # type: ignore
         ],
         "niah_context_rows": [],
         "insights": ["Best quality: sql ..."],
+        "run_configs": [{"run_id": "r1", "dataset": "oolong_trec", "config": {"model": "test-model"}}],
+        "per_sample_results": [],
+        "trajectories": [],
+        "per_engine_trajectory_stats": [],
     }
     output = tmp_path / "report.html"
     render_html_report(analysis, output)
@@ -28,8 +32,9 @@ def test_render_html_report_contains_sections(tmp_path) -> None:  # type: ignore
 
     assert "Benchmark Analytics Report" in text
     assert "Key Insights" in text
-    assert "chart-score" in text
+    assert "chart-quality" in text
     assert "metrics-table" in text
+    assert "chart-niah" not in text
 
 
 def test_render_html_report_handles_niah_rows(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -61,6 +66,10 @@ def test_render_html_report_handles_niah_rows(tmp_path) -> None:  # type: ignore
             }
         ],
         "insights": ["test insight"],
+        "run_configs": [{"run_id": "r1", "dataset": "s_niah", "config": {"model": "test-model"}}],
+        "per_sample_results": [],
+        "trajectories": [],
+        "per_engine_trajectory_stats": [],
     }
     output = tmp_path / "report_niah.html"
     render_html_report(analysis, output)

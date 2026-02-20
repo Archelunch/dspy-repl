@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from dspy_repl.core.code_interpreter import FinalOutput
-from dspy_repl.core.repl_types import REPLVariable
 from dspy_repl.interpreters.sql_interpreter import SQLInterpreter
 from dspy_repl.languages.sql_rlm import SQLRLM
 from tests.helpers.predictor_factory import make_mock_predictor
-
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;

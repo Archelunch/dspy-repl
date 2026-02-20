@@ -20,6 +20,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-dirs", default=None, help="Comma-separated benchmark run directories.")
     parser.add_argument("--latest", type=int, default=None, help="Use latest N run directories under --base-dir.")
     parser.add_argument("--base-dir", default="benchmark_results", help="Base benchmark results directory.")
+    parser.add_argument(
+        "--max-trajectories",
+        type=int,
+        default=40,
+        help="Maximum number of trajectory files to embed into report for trajectory viewer.",
+    )
     parser.add_argument("--output", default=None, help="Output HTML file path.")
     return parser
 
@@ -57,7 +63,7 @@ def main() -> None:
     if not run_dirs:
         parser.error("No run directories selected. Use --run-dir, --run-dirs, or --latest.")
 
-    analysis = analyze_runs(run_dirs)
+    analysis = analyze_runs(run_dirs, max_trajectories=max(0, int(args.max_trajectories)))
     output = Path(args.output) if args.output else default_output_path(Path(args.base_dir))
     report_path = render_html_report(analysis, output)
     print(f"HTML report saved to: {report_path}")

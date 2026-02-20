@@ -47,6 +47,13 @@ def load_run_artifacts(run_dir: Path) -> dict[str, Any]:
         payload["results"] = []
         payload["warnings"].append("results.jsonl is missing")
 
+    run_config_path = run_dir / "run_config.json"
+    if run_config_path.exists():
+        payload["run_config"] = _read_json(run_config_path)
+    else:
+        payload["run_config"] = {}
+        payload["warnings"].append("run_config.json is missing")
+
     per_engine_path = run_dir / "per_engine_trajectory_stats.json"
     if per_engine_path.exists():
         payload["per_engine_trajectory_stats"] = _read_json(per_engine_path)
@@ -132,6 +139,112 @@ def derive_metrics(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return derived
 
 
+def _normalize_per_sample_results(run_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    summary = run_payload.get("summary", {})
+    run_id = str(summary.get("run_id") or run_payload.get("run_id") or "unknown")
+    dataset = str(summary.get("dataset", "unknown"))
+    results = run_payload.get("results", [])
+    rows: list[dict[str, Any]] = []
+    for row in results:
+        rows.append(
+            {
+                "run_id": run_id,
+                "run_dir": str(run_payload.get("run_dir", "")),
+                "dataset": dataset,
+                "engine": str(row.get("engine", "unknown")),
+                "sample_id": str(row.get("sample_id", "")),
+                "task_name": str(row.get("task_name", "")),
+                "answer": row.get("answer"),
+                "expected": row.get("expected"),
+                "score": float(row.get("score", 0.0) or 0.0),
+                "iterations": int(row.get("iterations", 0) or 0),
+                "elapsed_seconds": float(row.get("elapsed_seconds", 0.0) or 0.0),
+                "success": bool(row.get("success", False)),
+                "error": row.get("error"),
+                "trajectory_path": row.get("trajectory_path"),
+                "trajectory_diagnostics": row.get("trajectory_diagnostics", {}),
+            }
+        )
+    return rows
+
+
+def _normalize_per_engine_trajectory_stats(run_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    summary = run_payload.get("summary", {})
+    run_id = str(summary.get("run_id") or run_payload.get("run_id") or "unknown")
+    dataset = str(summary.get("dataset", "unknown"))
+    stats_by_engine = run_payload.get("per_engine_trajectory_stats", {})
+    rows: list[dict[str, Any]] = []
+    for engine, value in stats_by_engine.items():
+        stats = dict(value) if isinstance(value, dict) else {}
+        rows.append(
+            {
+                "run_id": run_id,
+                "dataset": dataset,
+                "engine": str(engine),
+                "total_samples": int(stats.get("total_samples", 0) or 0),
+                "failed_samples": int(stats.get("failed_samples", 0) or 0),
+                "timeout_samples": int(stats.get("timeout_samples", 0) or 0),
+                "avg_steps": float(stats.get("avg_steps", 0.0) or 0.0),
+                "avg_llm_call_mentions": float(stats.get("avg_llm_call_mentions", 0.0) or 0.0),
+                "avg_sql_statement_estimate": float(stats.get("avg_sql_statement_estimate", 0.0) or 0.0),
+                "avg_error_steps": float(stats.get("avg_error_steps", 0.0) or 0.0),
+                "avg_code_chars": float(stats.get("avg_code_chars", 0.0) or 0.0),
+                "avg_output_chars": float(stats.get("avg_output_chars", 0.0) or 0.0),
+                "avg_latency_seconds_success_only": float(stats.get("avg_latency_seconds_success_only", 0.0) or 0.0),
+                "avg_iterations_success_only": float(stats.get("avg_iterations_success_only", 0.0) or 0.0),
+            }
+        )
+    return sorted(rows, key=lambda row: (row["run_id"], row["engine"]))
+
+
+def _load_selected_trajectories(run_payload: dict[str, Any], max_trajectories: int = 40) -> list[dict[str, Any]]:
+    run_dir = Path(str(run_payload.get("run_dir", "")))
+    candidates = _normalize_per_sample_results(run_payload)
+
+    def _interestingness(row: dict[str, Any]) -> tuple[int, int, int]:
+        diagnostics = row.get("trajectory_diagnostics", {}) or {}
+        error_steps = int(diagnostics.get("error_steps", 0) or 0)
+        steps = int(diagnostics.get("steps", 0) or 0)
+        not_success = 0 if row.get("success") else 1
+        has_error = 1 if row.get("error") else 0
+        return (
+            not_success * 3 + has_error * 2 + (1 if error_steps > 0 else 0),
+            error_steps,
+            steps,
+        )
+
+    selected = sorted(candidates, key=_interestingness, reverse=True)[:max_trajectories]
+    output: list[dict[str, Any]] = []
+
+    for row in selected:
+        rel_path = row.get("trajectory_path")
+        if not rel_path:
+            continue
+        trajectory_file = run_dir / str(rel_path)
+        if not trajectory_file.exists():
+            continue
+        try:
+            payload = _read_json(trajectory_file)
+        except json.JSONDecodeError:
+            continue
+        output.append(
+            {
+                "run_id": row.get("run_id"),
+                "dataset": row.get("dataset"),
+                "engine": row.get("engine"),
+                "sample_id": row.get("sample_id"),
+                "task_name": row.get("task_name"),
+                "success": row.get("success"),
+                "score": row.get("score"),
+                "elapsed_seconds": row.get("elapsed_seconds"),
+                "error": row.get("error"),
+                "trajectory": payload.get("trajectory", []),
+            }
+        )
+
+    return output
+
+
 def generate_insights(derived_rows: list[dict[str, Any]]) -> list[str]:
     if not derived_rows:
         return ["No benchmark rows were found in the selected run directories."]
@@ -174,13 +287,27 @@ def generate_insights(derived_rows: list[dict[str, Any]]) -> list[str]:
     return insights
 
 
-def analyze_runs(run_dirs: list[Path]) -> dict[str, Any]:
+def analyze_runs(run_dirs: list[Path], max_trajectories: int = 40) -> dict[str, Any]:
     runs = [load_run_artifacts(path) for path in run_dirs]
     normalized_rows: list[dict[str, Any]] = []
     niah_context_rows: list[dict[str, Any]] = []
+    run_configs: list[dict[str, Any]] = []
+    per_sample_results: list[dict[str, Any]] = []
+    per_engine_trajectory_stats: list[dict[str, Any]] = []
+    trajectories: list[dict[str, Any]] = []
     for run in runs:
         normalized_rows.extend(normalize_run_rows(run))
         niah_context_rows.extend(normalize_niah_context_rows(run))
+        run_configs.append(
+            {
+                "run_id": run.get("run_id"),
+                "dataset": run.get("summary", {}).get("dataset", "unknown"),
+                "config": run.get("run_config", {}),
+            }
+        )
+        per_sample_results.extend(_normalize_per_sample_results(run))
+        per_engine_trajectory_stats.extend(_normalize_per_engine_trajectory_stats(run))
+        trajectories.extend(_load_selected_trajectories(run, max_trajectories=max_trajectories))
 
     derived_rows = derive_metrics(normalized_rows)
     insights = generate_insights(derived_rows)
@@ -189,5 +316,9 @@ def analyze_runs(run_dirs: list[Path]) -> dict[str, Any]:
         "rows": normalized_rows,
         "derived_rows": derived_rows,
         "niah_context_rows": niah_context_rows,
+        "run_configs": run_configs,
+        "per_sample_results": per_sample_results,
+        "per_engine_trajectory_stats": per_engine_trajectory_stats,
+        "trajectories": trajectories,
         "insights": insights,
     }

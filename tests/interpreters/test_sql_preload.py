@@ -9,7 +9,6 @@ import pytest
 
 from dspy_repl.interpreters.sql_interpreter import SQLInterpreter
 
-
 SAMPLE_SCHEMA = """
 PRAGMA foreign_keys = ON;
 

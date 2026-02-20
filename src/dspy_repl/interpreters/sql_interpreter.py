@@ -110,9 +110,7 @@ class SQLInterpreter:
     def _discover_existing_tables(self) -> None:
         """Register all user tables from sqlite_master into _tables_created."""
         assert self._conn is not None
-        cursor = self._conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-        )
+        cursor = self._conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         for row in cursor:
             self._tables_created.add(row[0])
         self._table_generation += 1

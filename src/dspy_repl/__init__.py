@@ -6,4 +6,4 @@ from dspy_repl.languages.scheme_rlm import SchemeRLM
 from dspy_repl.languages.sql_rlm import SQLRLM
 
 __all__ = ["SchemeRLM", "SQLRLM", "HaskellRLM", "JavaScriptRLM"]
-__version__ = "0.2.0"
+__version__ = "0.4.0"
