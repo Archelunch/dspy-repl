@@ -78,3 +78,19 @@ def test_sql_profile_sync_when_interpreter_exposes_profile(lm_context) -> None:
         _ = rlm(context="test")
         assert rlm.last_sql_profile["table_load_seconds"] == 0.2
         assert rlm.last_sql_profile["query_exec_seconds"] == 0.3
+
+
+def test_sql_recovers_when_action_code_is_none(lm_context) -> None:
+    mock = MockInterpreter(responses=[FinalOutput({"answer": "ok"})])
+    with lm_context([{"answer": "ok"}]):
+        rlm = SQLRLM("context -> answer", interpreter=mock, max_iterations=3)
+        rlm.generate_action = make_mock_predictor(
+            [
+                {"reasoning": "bad action", "code": None},
+                {"reasoning": "recover", "code": "SELECT SUBMIT(json_object('answer', 'ok'));"},
+            ]
+        )
+        result = rlm(context="test")
+        assert result.answer == "ok"
+        assert len(result.trajectory) == 2
+        assert result.trajectory[0]["output"].startswith("[Error] Model returned empty")

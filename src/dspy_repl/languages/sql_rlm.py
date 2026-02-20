@@ -322,7 +322,10 @@ Review your trajectory to see what information you gathered and what values you 
 
         try:
             code = self._strip_code_fences(action.code)
-            result = repl.execute(code, variables=dict(input_args))
+            if not code:
+                result = "[Error] Model returned empty SQL/REPL code for this iteration."
+            else:
+                result = repl.execute(code, variables=dict(input_args))
         except Exception as e:
             result = f"[Error] {e}"
         return self._process_execution_result(action, result, history, output_field_names)
@@ -348,7 +351,10 @@ Review your trajectory to see what information you gathered and what values you 
 
         try:
             code = self._strip_code_fences(action.code)
-            result = repl.execute(code, variables=dict(input_args))
+            if not code:
+                result = "[Error] Model returned empty SQL/REPL code for this iteration."
+            else:
+                result = repl.execute(code, variables=dict(input_args))
         except Exception as e:
             result = f"[Error] {e}"
         return self._process_execution_result(action, result, history, output_field_names)

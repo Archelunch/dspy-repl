@@ -84,7 +84,9 @@ class BaseReplRLM(Module):
             lines.append(f"- `{sig_str}` - {desc}")
         return "\n".join(lines)
 
-    def _strip_code_fences(self, code: str) -> str:
+    def _strip_code_fences(self, code: Any) -> str:
+        if not isinstance(code, str):
+            return ""
         code = code.strip()
         match = self._CODE_FENCE_PATTERN.match(code)
         if match:
@@ -230,7 +232,10 @@ class BaseReplRLM(Module):
         self._log_iteration(iteration, action)
         try:
             code = self._strip_code_fences(action.code)
-            result = repl.execute(code, variables=dict(input_args))
+            if not code:
+                result = "[Error] Model returned empty SQL/REPL code for this iteration."
+            else:
+                result = repl.execute(code, variables=dict(input_args))
         except (CodeInterpreterError, SyntaxError) as e:
             result = f"[Error] {e}"
         return self._process_execution_result(action, result, history, output_field_names)
@@ -254,7 +259,10 @@ class BaseReplRLM(Module):
         self._log_iteration(iteration, action)
         try:
             code = self._strip_code_fences(action.code)
-            result = repl.execute(code, variables=dict(input_args))
+            if not code:
+                result = "[Error] Model returned empty SQL/REPL code for this iteration."
+            else:
+                result = repl.execute(code, variables=dict(input_args))
         except (CodeInterpreterError, SyntaxError) as e:
             result = f"[Error] {e}"
         return self._process_execution_result(action, result, history, output_field_names)
