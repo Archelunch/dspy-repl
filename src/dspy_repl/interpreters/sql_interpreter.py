@@ -606,12 +606,12 @@ class SQLInterpreter:
                 newline = s.find("\n")
                 if newline == -1:
                     return ""
-                s = s[newline + 1:].lstrip()
+                s = s[newline + 1 :].lstrip()
             elif s.startswith("/*"):
                 end = s.find("*/")
                 if end == -1:
                     return ""
-                s = s[end + 2:].lstrip()
+                s = s[end + 2 :].lstrip()
             else:
                 break
         return s
