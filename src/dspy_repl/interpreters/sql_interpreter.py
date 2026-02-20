@@ -597,8 +597,27 @@ class SQLInterpreter:
             summary = f"(showing {len(rows)} of {total_rows} rows; add LIMIT for targeted inspection)"
         return "\n".join([header, sep] + body + [summary])
 
+    @staticmethod
+    def _strip_leading_sql_comments(text: str) -> str:
+        """Remove leading ``-- …`` and ``/* … */`` comments from a SQL string."""
+        s = text.lstrip()
+        while s:
+            if s.startswith("--"):
+                newline = s.find("\n")
+                if newline == -1:
+                    return ""
+                s = s[newline + 1:].lstrip()
+            elif s.startswith("/*"):
+                end = s.find("*/")
+                if end == -1:
+                    return ""
+                s = s[end + 2:].lstrip()
+            else:
+                break
+        return s
+
     def _statement_is_select(self, statement: str) -> bool:
-        upper = statement.lstrip().upper()
+        upper = self._strip_leading_sql_comments(statement).upper()
         return upper.startswith("SELECT") or upper.startswith("WITH") or upper.startswith("PRAGMA")
 
     def execute(self, code: str, variables: dict[str, Any] | None = None) -> Any:
@@ -645,6 +664,9 @@ class SQLInterpreter:
                 else:
                     affected = cursor.rowcount if cursor.rowcount is not None and cursor.rowcount >= 0 else 0
                     outputs.append(f"OK ({affected} rows affected)")
+                    # Commit each non-SELECT statement so tool UDFs that read through
+                    # separate SQLite connections observe the latest writes immediately.
+                    conn.commit()
                 conn.set_progress_handler(None, 0)
             conn.commit()
         except sqlite3.OperationalError as e:

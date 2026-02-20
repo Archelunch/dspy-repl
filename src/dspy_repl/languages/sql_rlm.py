@@ -55,7 +55,7 @@ Available:
 - The database may contain pre-existing tables with FOREIGN KEY and CHECK constraints. Respect insert ordering: parent tables before child tables.
 - llm_query(prompt) - query a sub-LLM for semantic analysis
 - llm_query_batched(prompt1, prompt2, ...) - query multiple prompts concurrently, returns JSON array string
-- SUBMIT(json_object(...)) - submit final output when done
+- SELECT SUBMIT(json_object(...)) - submit final output when done. SUBMIT MUST be called as SELECT SUBMIT(...), never bare SUBMIT(...).
 
 IMPORTANT: This is ITERATIVE.
 1. READ VARIABLES_INFO FIRST - it shows table schemas, FK relationships, CHECK constraints, and row counts.
@@ -63,6 +63,11 @@ IMPORTANT: This is ITERATIVE.
 3. VERIFY BEFORE SUBMITTING - if results look wrong, revise.
 4. USE llm_query FOR SEMANTICS - SQL finds structure; llm_query handles semantic interpretation.
 5. SUBMIT ONLY AFTER SEEING OUTPUTS - SUBMIT ends the current run.
+
+SYNTAX RULES:
+- This is SQLite. Use json_extract(), json_each(), COALESCE() — NOT jsonExtract or camelCase variants.
+- To submit: SELECT SUBMIT(json_object('key1', val1, 'key2', val2)) — always wrap in SELECT.
+- Output ONLY valid SQL in the code block. No extra brackets, markup or non-SQL text.
 
 You have max {max_llm_calls} sub-LLM calls. When done, call SUBMIT with your output."""
 
@@ -84,12 +89,16 @@ class SQLRLM(BaseReplRLM):
         db_path: str = ":memory:",
         preload_sql: str | None = None,
         skip_variable_tables: set[str] | None = None,
+        tool_timeout_seconds: float = 600.0,
+        statement_timeout_seconds: float = 600.0,
     ) -> None:
         self.signature = ensure_signature(signature)
         self.sub_lm = sub_lm
         self._db_path = db_path
         self._preload_sql = preload_sql
         self._skip_variable_tables = set(skip_variable_tables) if skip_variable_tables else set()
+        self._tool_timeout_seconds = tool_timeout_seconds
+        self._statement_timeout_seconds = statement_timeout_seconds
         self._variables_info_cache_key: tuple[Any, ...] | None = None
         self._variables_info_cache_value: str | None = None
         self.last_sql_profile: dict[str, float] = {}
@@ -124,6 +133,8 @@ class SQLRLM(BaseReplRLM):
             skip_variable_tables=self._skip_variable_tables or None,
             tools=execution_tools,
             output_fields=self._get_output_fields_info(),
+            tool_timeout_seconds=self._tool_timeout_seconds,
+            statement_timeout_seconds=self._statement_timeout_seconds,
         )
 
     @staticmethod

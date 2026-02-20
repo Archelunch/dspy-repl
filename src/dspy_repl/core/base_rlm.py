@@ -84,11 +84,16 @@ class BaseReplRLM(Module):
             lines.append(f"- `{sig_str}` - {desc}")
         return "\n".join(lines)
 
-    def _strip_code_fences(self, code: Any) -> str:
+    _LOOSE_CODE_FENCE_RE = re.compile(r"```(?:\w+)?\s*\n(.*?)\n\s*```", re.DOTALL)
+
+    def _strip_code_fences(self, code: str) -> str:
         if not isinstance(code, str):
             return ""
         code = code.strip()
         match = self._CODE_FENCE_PATTERN.match(code)
+        if match:
+            return match.group(1)
+        match = self._LOOSE_CODE_FENCE_RE.search(code)
         if match:
             return match.group(1)
         return code
@@ -189,11 +194,15 @@ class BaseReplRLM(Module):
 
         if isinstance(result, str) and result.startswith("[Error]"):
             output = self._format_output(result)
+            if self.verbose:
+                logger.info(REPLEntry.format_output(output, self.max_output_chars))
             return history.append(reasoning=pred.reasoning, code=code, output=output)
 
         if isinstance(result, FinalOutput):
             parsed_outputs, error = self._process_final_output(result, output_field_names)
             if error:
+                if self.verbose:
+                    logger.info(REPLEntry.format_output(error, self.max_output_chars))
                 return history.append(reasoning=pred.reasoning, code=code, output=error)
 
             final_history = history.append(reasoning=pred.reasoning, code=code, output=f"FINAL: {parsed_outputs}")
